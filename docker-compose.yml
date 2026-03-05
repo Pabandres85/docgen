@@ -1,0 +1,4 @@
+# Convenience wrapper
+# Prefer: docker compose -f docker/docker-compose.yml up --build
+include:
+  - docker/docker-compose.yml
