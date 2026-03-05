@@ -1,5 +1,4 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import AnyHttpUrl
 from typing import List
 
 class Settings(BaseSettings):
@@ -8,6 +7,8 @@ class Settings(BaseSettings):
     storage_root: str = "/data/storage"
     redis_url: str = "redis://localhost:6379/0"
     database_url: str = "sqlite:////data/storage/docgen.sqlite"
+    max_upload_mb: int = 20
+    libreoffice_timeout_seconds: int = 120
 
     cors_origins: str = "http://localhost:8501"  # comma-separated
 
