@@ -14,9 +14,17 @@ services:
       - ../storage:/data/storage
     ports:
       - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2).read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     depends_on:
-      - redis
-      - db
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
 
   worker:
     build:
@@ -31,8 +39,10 @@ services:
     volumes:
       - ../storage:/data/storage
     depends_on:
-      - redis
-      - db
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
 
   ui:
     build:
@@ -42,13 +52,25 @@ services:
       - API_BASE_URL=http://api:8000
     ports:
       - "8501:8501"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8501', timeout=2).read()"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   db:
     image: postgres:16-alpine
@@ -60,6 +82,11 @@ services:
       - "5432:5432"
     volumes:
       - docgen_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U docgen -d docgen"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
   docgen_pg:

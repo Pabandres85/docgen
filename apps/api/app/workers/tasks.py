@@ -1,4 +1,5 @@
 import csv
+import logging
 import shutil
 import time
 from pathlib import Path
@@ -15,6 +16,8 @@ from app.services.template_render import render_docx
 from app.services.zipper import zip_pdfs
 from app.workers.celery_app import celery_app
 
+logger = logging.getLogger("docgen.worker")
+
 
 def _convert_with_retry(out_docx: Path, pdf_dir: Path, attempts: int = 2) -> Path:
     last_error: Exception | None = None
@@ -30,6 +33,7 @@ def _convert_with_retry(out_docx: Path, pdf_dir: Path, attempts: int = 2) -> Pat
 
 
 def _set_failed(batch: Batch, db: Session, message: str) -> None:
+    logger.error("batch_failed batch_id=%s reason=%s", batch.id, message)
     batch.status = "FAILED"
     batch.error += 1
     db.commit()
@@ -39,9 +43,11 @@ def _set_failed(batch: Batch, db: Session, message: str) -> None:
 @celery_app.task(name="process_batch")
 def process_batch(batch_id: str) -> dict:
     db: Session = SessionLocal()
+    started_at = time.perf_counter()
     try:
         batch = db.get(Batch, batch_id)
         if not batch:
+            logger.error("batch_not_found batch_id=%s", batch_id)
             return {"ok": False, "error": "Batch not found"}
 
         root = batch_root(batch_id)
@@ -61,6 +67,7 @@ def process_batch(batch_id: str) -> dict:
         batch.error = 0
         db.query(BatchItem).filter(BatchItem.batch_id == batch_id).delete()
         db.commit()
+        logger.info("batch_started batch_id=%s total=%s", batch_id, batch.total)
 
         try:
             records = read_excel_records(str(excel_path))
@@ -98,6 +105,7 @@ def process_batch(batch_id: str) -> dict:
                 ok += 1
 
             except Exception as e:
+                logger.warning("row_failed batch_id=%s row_index=%s error=%s", batch_id, idx, e)
                 item.status = "ERROR"
                 item.error_message = str(e)
                 errors.append({"row": idx, "error": str(e)})
@@ -128,6 +136,16 @@ def process_batch(batch_id: str) -> dict:
 
         batch.status = "DONE" if err == 0 else "DONE_WITH_ERRORS"
         db.commit()
+        duration_sec = round(time.perf_counter() - started_at, 3)
+        logger.info(
+            "batch_finished batch_id=%s status=%s total=%s ok=%s error=%s duration_sec=%s",
+            batch_id,
+            batch.status,
+            batch.total,
+            ok,
+            err,
+            duration_sec,
+        )
         return {
             "ok": True,
             "batch_id": batch_id,
@@ -135,6 +153,7 @@ def process_batch(batch_id: str) -> dict:
             "ok_count": ok,
             "error_count": err,
             "status": batch.status,
+            "duration_sec": duration_sec,
         }
 
     except Exception as e:
@@ -142,6 +161,8 @@ def process_batch(batch_id: str) -> dict:
         if batch:
             batch.status = "FAILED"
             db.commit()
+        duration_sec = round(time.perf_counter() - started_at, 3)
+        logger.exception("batch_crashed batch_id=%s duration_sec=%s error=%s", batch_id, duration_sec, e)
         return {"ok": False, "batch_id": batch_id, "error": str(e)}
     finally:
         db.close()

@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
@@ -14,6 +15,7 @@ from app.services.storage import batch_root, sanitize_upload_filename
 from app.workers.tasks import process_batch
 
 router = APIRouter(prefix="/batches", tags=["batches"])
+logger = logging.getLogger("docgen.api.batches")
 
 
 def _validate_upload(filename: str, expected_ext: str, size_bytes: int) -> None:
@@ -83,6 +85,7 @@ async def create_batch(
     batch.input_excel = f"input/{excel_name}"
     batch.input_template = f"input/{template_name}"
     db.commit()
+    logger.info("batch_created batch_id=%s excel=%s template=%s", batch.id, excel_name, template_name)
 
     return BatchCreateResponse(batch_id=batch.id)
 
@@ -105,6 +108,7 @@ def run_batch(batch_id: str, force: bool = Query(False), db: Session = Depends(g
     process_batch.delay(batch_id)
     batch.status = "RUNNING"
     db.commit()
+    logger.info("batch_dispatched batch_id=%s force=%s", batch_id, force)
     return BatchRunResponse(batch_id=batch_id, status=batch.status)
 
 
