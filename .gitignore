@@ -39,6 +39,8 @@ Thumbs.db
 # Logs
 # =========================
 *.log
+.release_section.tmp
+.changelog.new
 
 # =========================
 # Application storage

@@ -15,12 +15,26 @@ class RateLimitConfig:
     window_seconds: int
 
 
+_CLEANUP_INTERVAL = 300  # evict stale keys every 5 minutes
+
+
 class RateLimitMiddleware(BaseHTTPMiddleware):
     def __init__(self, app, config: RateLimitConfig):
         super().__init__(app)
         self.config = config
         self._hits: dict[str, deque[float]] = defaultdict(deque)
         self._lock = threading.Lock()
+        self._last_cleanup: float = time.time()
+
+    def _cleanup_stale_keys(self, cutoff: float) -> None:
+        stale = []
+        for key, queue in self._hits.items():
+            while queue and queue[0] < cutoff:
+                queue.popleft()
+            if not queue:
+                stale.append(key)
+        for key in stale:
+            del self._hits[key]
 
     def _client_key(self, request: Request) -> str:
         forwarded = request.headers.get("x-forwarded-for")
@@ -39,6 +53,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         limit = self.config.max_requests
 
         with self._lock:
+            # Periodically remove keys whose deques are empty (inactive IPs).
+            if now - self._last_cleanup > _CLEANUP_INTERVAL:
+                cutoff = now - window
+                self._cleanup_stale_keys(cutoff)
+                self._last_cleanup = now
+
             hit_queue = self._hits[key]
             cutoff = now - window
             while hit_queue and hit_queue[0] < cutoff:

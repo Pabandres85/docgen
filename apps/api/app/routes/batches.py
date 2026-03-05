@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.core.settings import settings
-from app.db.models import Batch
+from app.db.models import Batch, uid
 from app.db.session import get_db
 from app.schemas.batches import BatchCreateResponse, BatchRunResponse, BatchStatusResponse
 from app.services.excel_reader import read_excel_columns
@@ -70,24 +70,24 @@ async def create_batch(
     _validate_upload(excel_name, ".xlsx", len(excel_bytes))
     _validate_upload(template_name, ".docx", len(template_bytes))
 
-    batch = Batch(filename_pattern=filename_pattern.strip() or "registro_{row_index}")
+    # Generate the ID before touching the DB so we can write files first.
+    # If the disk write fails, no orphaned DB record is created.
+    batch_id = uid()
+    root = batch_root(batch_id)
+    (root / "input" / excel_name).write_bytes(excel_bytes)
+    (root / "input" / template_name).write_bytes(template_bytes)
+
+    batch = Batch(
+        id=batch_id,
+        filename_pattern=filename_pattern.strip() or "registro_{row_index}",
+        input_excel=f"input/{excel_name}",
+        input_template=f"input/{template_name}",
+    )
     db.add(batch)
     db.commit()
-    db.refresh(batch)
+    logger.info("batch_created batch_id=%s excel=%s template=%s", batch_id, excel_name, template_name)
 
-    root = batch_root(batch.id)
-    excel_path = root / "input" / excel_name
-    template_path = root / "input" / template_name
-
-    excel_path.write_bytes(excel_bytes)
-    template_path.write_bytes(template_bytes)
-
-    batch.input_excel = f"input/{excel_name}"
-    batch.input_template = f"input/{template_name}"
-    db.commit()
-    logger.info("batch_created batch_id=%s excel=%s template=%s", batch.id, excel_name, template_name)
-
-    return BatchCreateResponse(batch_id=batch.id)
+    return BatchCreateResponse(batch_id=batch_id)
 
 
 @router.post("/{batch_id}/run", response_model=BatchRunResponse)

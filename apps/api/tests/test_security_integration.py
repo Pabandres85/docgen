@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app.core.settings import settings
+from app.core.rate_limit import RateLimitConfig, RateLimitMiddleware
 from app.main import create_app
 
 
@@ -31,3 +32,18 @@ def test_security_headers_present(client):
     assert response.status_code == 200
     assert response.headers.get("x-content-type-options") == "nosniff"
     assert response.headers.get("x-frame-options") == "DENY"
+
+
+def test_cleanup_removes_inactive_keys_after_expiration():
+    middleware = RateLimitMiddleware(app=lambda scope, receive, send: None, config=RateLimitConfig(max_requests=10, window_seconds=60))
+    now = 1000.0
+    middleware._hits["1.1.1.1"].extend([900.0, 910.0])
+    middleware._hits["2.2.2.2"].extend([995.0])
+    middleware._last_cleanup = now - 301.0
+
+    with middleware._lock:
+        middleware._cleanup_stale_keys(now - middleware.config.window_seconds)
+        middleware._last_cleanup = now
+
+    assert "1.1.1.1" not in middleware._hits
+    assert "2.2.2.2" in middleware._hits

@@ -21,6 +21,32 @@ docker compose up --build
 - API health: http://localhost:8000/health
 - API readiness: http://localhost:8000/ready
 
+## Comandos operativos
+- Linux/macOS (`make`):
+```bash
+make up
+make ps
+make migrate
+make test-api
+make logs
+make down
+make release VERSION=0.2.0
+```
+
+- Windows PowerShell:
+```powershell
+.\ops.ps1 up
+.\ops.ps1 ps
+.\ops.ps1 migrate
+.\ops.ps1 test-api
+.\ops.ps1 logs
+.\ops.ps1 down
+.\ops.ps1 release -Version 0.2.0
+```
+
+- Checklist de release: ver `RELEASE_CHECKLIST.md`.
+- Version actual en `VERSION`; historial en `CHANGELOG.md`.
+
 ## Flujo
 1. Subes `datos.xlsx` + `plantilla.docx` (variables `{{NombreColumna}}` iguales al Excel).
 2. Das un patron de nombre, por ejemplo `Proceso_{NumeroProceso}_{NombreContribuyente}`.

@@ -9,5 +9,7 @@ COPY apps/ui /app/apps/ui
 
 ENV PYTHONPATH=/app/apps/ui
 
+WORKDIR /app/apps/ui
+
 EXPOSE 8501
 CMD ["streamlit", "run", "Home.py", "--server.address=0.0.0.0", "--server.port=8501", "--browser.gatherUsageStats=false"]
